@@ -128,4 +128,33 @@ class due_reminder extends course_reminder {
         return $headers;
     }
 
+    /**
+     * Assign user which the reminder message is sent to
+     *
+     * @param object $user user object (id field must contain)
+     * @param boolean $refreshcontent indicates whether content of message should
+     * be refresh based on given user
+     *
+     * @return event object
+     */
+    public function set_sendto_user($user, $refreshcontent=true) {
+        if (!isset($this->eventobject) || empty($this->eventobject)) {
+            $this->create_reminder_message_object();
+        }
+
+        $this->eventobject->userto = $user;
+
+        if ($refreshcontent) {
+            $contenthtml = $this->get_message_html($user);
+            $titlehtml = $this->get_message_title();
+            $smallMessage = $this->aheaddays.' day(s) to go: '.$this->format_event_time_duration($user)."\n";
+
+            $this->eventobject->fullmessagehtml = $contenthtml;
+            $this->eventobject->smallmessage = $smallMessage;
+            $this->eventobject->fullmessage = $this->get_message_plaintext($user);
+            $this->eventobject->contexturl = $this->generate_event_link();
+        }
+
+        return $this->eventobject;
+    }
 }

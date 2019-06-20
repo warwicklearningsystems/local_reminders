@@ -79,11 +79,11 @@ if ($hassiteconfig) {
                        'days1' => ' '.get_string('days1', 'local_reminders'));
     
     // default settings for each event type
-    $defaultsite = array('days7' => 0,'days3' => 1,'days1' => 0);
-    $defaultuser = array('days7' => 0,'days3' => 0,'days1' => 1);
-    $defaultcourse = array('days7' => 0,'days3' => 1,'days1' => 0);
-    $defaultgroup = array('days7' => 0,'days3' => 1,'days1' => 0);
-    $defaultdue = array('days7' => 0,'days3' => 1,'days1' => 0);
+    $defaultsite = array('days7' => 0,'days3' => 0,'days1' => 0);
+    $defaultuser = array('days7' => 0,'days3' => 0,'days1' => 0);
+    $defaultcourse = array('days7' => 0,'days3' => 0,'days1' => 0);
+    $defaultgroup = array('days7' => 0,'days3' => 0,'days1' => 0);
+    $defaultdue = array('days7' => 0,'days3' => 0,'days1' => 0);
 
 
     ///// SITE EVENT SETTINGS ///////////////////////////////////////////////////////////////////////////////
@@ -156,8 +156,27 @@ if ($hassiteconfig) {
     $settings->add(new admin_setting_configselect('local_reminders_duesend',
             get_string('sendactivityreminders', 'local_reminders'), 
             get_string('explainsendactivityreminders', 'local_reminders'),
-            REMINDERS_ACTIVITY_BOTH, $activitychoices));
+            REMINDERS_ACTIVITY_ONLY_CLOSINGS, $activitychoices));
+
+    $settings->add(new admin_setting_configcheckbox('local_reminders_quiz_enabled',
+            get_string('quiz_enabled', 'local_reminders'),
+            get_string('quiz_enableddescription', 'local_reminders'), 0));
+
+    $settings->add(new admin_setting_configcheckbox('local_reminders_assignment_enabled',
+            get_string('assignment_enabled', 'local_reminders'),
+            get_string('assignment_enableddescription', 'local_reminders'), 0));
+
+    $settings->add(new admin_setting_configcheckbox('local_reminders_questionnaire_enabled',
+            get_string('questionnaire_enabled', 'local_reminders'),
+            get_string('questionnaire_enableddescription', 'local_reminders'), 0));
     
+    $settings->add(new admin_setting_configtextarea(
+        'local_reminders_questionnaire_tags',
+        get_string('questionnaire_tags', 'local_reminders'),
+        get_string('questionnaire_tagsdescription', 'local_reminders'),
+        null
+    ));
+
     $settings->add(new admin_setting_configmulticheckbox2('local_reminders_duerdays', 
             get_string('reminderdaysahead', 'local_reminders'), 
             get_string('explaindueheading', 'local_reminders'), 

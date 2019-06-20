@@ -38,6 +38,8 @@ require_once($CFG->libdir . '/accesslib.php');
 
 require_once($CFG->dirroot . '/availability/classes/info_module.php');
 require_once($CFG->libdir . '/modinfolib.php');
+require_once($CFG->dirroot . '/mod/assign/locallib.php');
+require_once($CFG->dirroot . '/mod/questionnaire/locallib.php');
 
 /// CONSTANTS ///////////////////////////////////////////////////////////
 
@@ -158,7 +160,7 @@ function local_reminders_cron() {
 
     mtrace("   [Local Reminder] Time window: ".userdate($timewindowstart)." to ".userdate($timewindowend));
     //mtrace("   [Local Reminder] Time window: ".$timewindowstart." to ".$timewindowend);
-    //mtrace("   [Local Reminder] Where clause: ".$whereclause);
+    mtrace("   [Local Reminder] Where clause: ".$whereclause);
 
     $upcomingevents = $DB->get_records_select('event', $whereclause);
     if ($upcomingevents == false) {     // no upcoming events, so let's stop.
@@ -316,6 +318,22 @@ function local_reminders_cron() {
                 case 'due':
 
                     if (!isemptyString($event->modulename)) {
+
+                        if( ( 'assign' == strtolower( $event->modulename ) ) &&  !$CFG->local_reminders_questionnaire_enabled ){
+                            mtrace("  [Local Reminder] Reminder sending for Assignment closings has been restricted in the configuration.");
+                            break;
+                        }
+
+                        if( ( 'quiz' == strtolower( $event->modulename ) ) && !$CFG->local_reminders_quiz_enabled ){
+                            mtrace("  [Local Reminder] Reminder sending for Quiz closings has been restricted in the configuration.");
+                            break;
+                        }
+
+                        if( ( 'questionnaire' == strtolower( $event->modulename ) ) && !$CFG->local_reminders_questionnaire_enabled ){
+                            mtrace("  [Local Reminder] Reminder sending for Questionnaire closings has been restricted in the configuration.");
+                            break;
+                        }
+
                         $courseandcm = get_course_and_cm_from_instance($event->instance, $event->modulename, $event->courseid);
                         $course = $courseandcm[0];
                         $cm = $courseandcm[1];
@@ -323,6 +341,35 @@ function local_reminders_cron() {
                         if (isset($coursesettings->status_activities) && $coursesettings->status_activities == 0) {
                             mtrace("  [Local Reminder] Reminder sending for activities has been restricted in the course specific configurations.");
                             break;
+                        }
+
+                        if( 'questionnaire' == strtolower( $event->modulename ) ){
+
+                            if( !core_tag_tag::is_enabled( 'core', 'course_modules' ) ){
+                                mtrace("  [Local Reminder] Reminder sending for Questionnaires has been prevented because tagging is disbaled and must be enabled.");
+                                break;
+                            }
+
+                            if( !$CFG->local_reminders_questionnaire_tags ){
+                                mtrace("  [Local Reminder] Reminder sending for Questionnaires has been prevented because there are no tags configured.");
+                                break;
+                            }
+
+                            $tagsToSendRemindersForMap = stristr( $CFG->local_reminders_questionnaire_tags, ',' ) ? explode( ',', $CFG->local_reminders_questionnaire_tags ) : [ $CFG->local_reminders_questionnaire_tags ];
+
+                            $moduleSpecificTags = core_tag_tag::get_item_tags_array( 'core', 'course_modules', $cm->id );
+                            $tagCountBeforeFilter = count( $moduleSpecificTags );
+
+                            $moduleSpecificTags = array_filter( $moduleSpecificTags, function( $moduleSpecificTag ) use ( $tagsToSendRemindersForMap ){
+                                return in_array( $moduleSpecificTag, $tagsToSendRemindersForMap );
+                            });
+
+                            $tagCountAfterFilter = count( $moduleSpecificTags );
+
+                            if( !( $tagCountBeforeFilter == $tagCountAfterFilter ) ){
+                                mtrace("  [Local Reminder] Reminder sending for Questionnaires has been prevented because there's a tag mismatch.");
+                                break;
+                            }
                         }
 
                         if (!empty($course) && !empty($cm)) {
@@ -348,6 +395,30 @@ function local_reminders_cron() {
                                 //   see: https://docs.moodle.org/dev/Availability_API#Display_a_list_of_users_who_may_be_able_to_access_the_current_activity
                                 $info = new \core_availability\info_module($cm);
                                 $sendusers = $info->filter_user_list($sendusers);
+                            }
+
+                            if( 'assign' == strtolower( $event->modulename ) ){
+                                $assign = new assign($context, $cm, $course);
+                                $usersWithSubmissions = get_assignment_submissions( $assign, array_column( $sendusers, 'id' ) );
+
+                                if( $usersWithSubmissions && !empty( $usersWithSubmissions ) ){
+
+                                    $userIdsWithSubmissions = array_column( $usersWithSubmissions, 'userid' );
+
+                                    $sendusers = array_filter( $sendusers, function( $sendToUser ) use ( $userIdsWithSubmissions ){
+                                        return !in_array( $sendToUser->id, $userIdsWithSubmissions );
+                                    });
+                                }
+                            }
+
+                            if( 'questionnaire' == strtolower( $event->modulename ) ){
+                                $nonRespondents = questionnaire_get_incomplete_users( $cm, 0 );
+
+                                if( $nonRespondents && !empty( $nonRespondents ) ){
+                                    $sendusers = array_filter( $sendusers, function( $sendToUser ) use ( $nonRespondents ){
+                                        return in_array( $sendToUser->id, $nonRespondents );
+                                    });
+                                }
                             }
 
                             $reminder = new due_reminder($event, $course, $context, $aheadday);
@@ -461,6 +532,140 @@ function local_reminders_cron() {
     
     //add_to_log(0, 'local_reminders', 'cron', '', $timewindowend, 0, 0);
     add_flag_record_db($timewindowend, 'sent');
+}
+
+function get_assignment_submissions(assign $assignment, $users ) {
+    global $CFG, $PAGE, $DB, $USER;
+
+    // The filters do not make sense when there are no submissions, so do not apply them.
+    if( !$assignment->is_any_submission_plugin_enabled() )
+        return false;
+
+    if (count($users) == 0) {
+        // Insert a record that will never match to the sql is still valid.
+        $users[] = -1;
+    }
+
+    $params = array();
+    $params['assignmentid1'] = (int)$assignment->get_instance()->id;
+    $params['assignmentid2'] = (int)$assignment->get_instance()->id;
+    $params['assignmentid3'] = (int)$assignment->get_instance()->id;
+    $params['newstatus'] = ASSIGN_SUBMISSION_STATUS_NEW;
+
+
+    $fields = 'u.id as userid, ';
+    $fields .= 's.status as status, ';
+    $fields .= 's.id as submissionid, ';
+    $fields .= 's.timecreated as firstsubmission, ';
+    $fields .= "CASE WHEN status <> :newstatus THEN s.timemodified ELSE NULL END as timesubmitted, ";
+    $fields .= 's.attemptnumber as attemptnumber, ';
+    $fields .= 'g.id as gradeid, ';
+    $fields .= 'g.grade as grade, ';
+    $fields .= 'g.timemodified as timemarked, ';
+    $fields .= 'g.timecreated as firstmarked, ';
+    $fields .= 'uf.mailed as mailed, ';
+    $fields .= 'uf.locked as locked, ';
+    $fields .= 'uf.extensionduedate as extensionduedate, ';
+    $fields .= 'uf.workflowstate as workflowstate, ';
+    $fields .= 'uf.allocatedmarker as allocatedmarker';
+
+    $from = '{user} u
+                     LEFT JOIN {assign_submission} s
+                            ON u.id = s.userid
+                           AND s.assignment = :assignmentid1
+                           AND s.latest = 1 ';
+
+    // For group assignments, there can be a grade with no submission.
+    $from .= ' LEFT JOIN {assign_grades} g
+                        ON g.assignment = :assignmentid2
+                       AND u.id = g.userid
+                       AND (g.attemptnumber = s.attemptnumber OR s.attemptnumber IS NULL) ';
+
+    $from .= 'LEFT JOIN {assign_user_flags} uf
+                     ON u.id = uf.userid
+                    AND uf.assignment = :assignmentid3 ';
+
+    $hasoverrides = $assignment->has_overrides();
+
+    if ($hasoverrides) {
+        $params['assignmentid5'] = (int)$assignment->get_instance()->id;
+        $params['assignmentid6'] = (int)$assignment->get_instance()->id;
+        $params['assignmentid7'] = (int)$assignment->get_instance()->id;
+        $params['assignmentid8'] = (int)$assignment->get_instance()->id;
+        $params['assignmentid9'] = (int)$assignment->get_instance()->id;
+
+        $fields .= ', priority.priority, ';
+        $fields .= 'effective.allowsubmissionsfromdate, ';
+        $fields .= 'effective.duedate, ';
+        $fields .= 'effective.cutoffdate ';
+
+        $from .= ' LEFT JOIN (
+           SELECT merged.userid, min(merged.priority) priority FROM (
+              ( SELECT u.id as userid, 9999999 AS priority
+                  FROM {user} u
+              )
+              UNION
+              ( SELECT uo.userid, 0 AS priority
+                  FROM {assign_overrides} uo
+                 WHERE uo.assignid = :assignmentid5
+              )
+              UNION
+              ( SELECT gm.userid, go.sortorder AS priority
+                  FROM {assign_overrides} go
+                  JOIN {groups} g ON g.id = go.groupid
+                  JOIN {groups_members} gm ON gm.groupid = g.id
+                 WHERE go.assignid = :assignmentid6
+              )
+            ) merged
+            GROUP BY merged.userid
+          ) priority ON priority.userid = u.id
+
+        JOIN (
+          (SELECT 9999999 AS priority,
+                  u.id AS userid,
+                  a.allowsubmissionsfromdate,
+                  a.duedate,
+                  a.cutoffdate
+             FROM {user} u
+             JOIN {assign} a ON a.id = :assignmentid7
+          )
+          UNION
+          (SELECT 0 AS priority,
+                  uo.userid,
+                  uo.allowsubmissionsfromdate,
+                  uo.duedate,
+                  uo.cutoffdate
+             FROM {assign_overrides} uo
+            WHERE uo.assignid = :assignmentid8
+          )
+          UNION
+          (SELECT go.sortorder AS priority,
+                  gm.userid,
+                  go.allowsubmissionsfromdate,
+                  go.duedate,
+                  go.cutoffdate
+             FROM {assign_overrides} go
+             JOIN {groups} g ON g.id = go.groupid
+             JOIN {groups_members} gm ON gm.groupid = g.id
+            WHERE go.assignid = :assignmentid9
+          )
+
+        ) effective ON effective.priority = priority.priority AND effective.userid = priority.userid ';
+    }
+
+    $userparams = array();
+    $userindex = 0;
+
+    list($userwhere, $userparams) = $DB->get_in_or_equal($users, SQL_PARAMS_NAMED, 'user');
+    $where = 'u.id ' . $userwhere;
+    $params = array_merge($params, $userparams);
+
+    $where .= ' AND (s.timemodified IS NOT NULL AND s.status = :submitted) ';
+    $params['submitted'] = ASSIGN_SUBMISSION_STATUS_SUBMITTED;
+
+    $sql = "SELECT {$fields} FROM {$from} WHERE {$where}";
+
+    return $DB->get_records_sql( $sql, $params );
 }
 
 /**

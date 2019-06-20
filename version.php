@@ -32,3 +32,7 @@ $plugin->maturity  = MATURITY_RC;
 $plugin->component = 'local_reminders'; 
 // deprecated since v3.5      
 // $plugin->cron      = 10;                  // Default: 900, will run for 15-minutes
+$plugin->dependencies = array(
+    'mod_questionnaire' => 2018110101,
+    'mod_assign' => 2018120300
+);

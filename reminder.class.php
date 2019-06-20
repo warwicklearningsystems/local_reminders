@@ -82,9 +82,8 @@ abstract class reminder {
      * 
      * @return string complete url for the event
      */
-    protected function generate_event_link() {       
-        $params = array('view' => 'day', 'cal_d' => date('j', $this->event->timestart), 
-            'cal_m' => date('n', $this->event->timestart), 'cal_y' => date('Y', $this->event->timestart));
+    protected function generate_event_link() {
+        $params = array('view' => 'day', 'time' => $this->event->timestart);
         $calurl = new moodle_url('/calendar/view.php', $params);
         $calurl->set_anchor('event_'.$this->event->id);
         
