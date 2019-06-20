@@ -319,7 +319,7 @@ function local_reminders_cron() {
 
                     if (!isemptyString($event->modulename)) {
 
-                        if( ( 'assign' == strtolower( $event->modulename ) ) &&  !$CFG->local_reminders_questionnaire_enabled ){
+                        if( ( 'assign' == strtolower( $event->modulename ) ) &&  !$CFG->local_reminders_assignment_enabled ){
                             mtrace("  [Local Reminder] Reminder sending for Assignment closings has been restricted in the configuration.");
                             break;
                         }
