@@ -31,6 +31,9 @@ require_once($CFG->dirroot . '/local/reminders/contents/user_reminder.class.php'
 require_once($CFG->dirroot . '/local/reminders/contents/course_reminder.class.php');
 require_once($CFG->dirroot . '/local/reminders/contents/group_reminder.class.php');
 require_once($CFG->dirroot . '/local/reminders/contents/due_reminder.class.php');
+require_once($CFG->dirroot . '/local/reminders/contents/due_reminder_questionnaire.class.php');
+require_once($CFG->dirroot . '/local/reminders/contents/due_reminder_assignment.class.php');
+require_once($CFG->dirroot . '/local/reminders/contents/due_reminder_quiz.class.php');
 
 require_once($CFG->dirroot . '/calendar/lib.php');
 require_once($CFG->dirroot . '/group/lib.php');
@@ -397,6 +400,8 @@ function local_reminders_cron() {
                                 $sendusers = $info->filter_user_list($sendusers);
                             }
 
+                            $reminder = new due_reminder($event, $course, $context, $aheadday);
+
                             if( 'assign' == strtolower( $event->modulename ) ){
                                 $assign = new assign($context, $cm, $course);
                                 $usersWithSubmissions = get_assignment_submissions( $assign, array_column( $sendusers, 'id' ) );
@@ -409,6 +414,8 @@ function local_reminders_cron() {
                                         return !in_array( $sendToUser->id, $userIdsWithSubmissions );
                                     });
                                 }
+
+                                $reminder = new due_reminder_assignment( $event, $course, $context, $aheadday );
                             }
 
                             if( 'questionnaire' == strtolower( $event->modulename ) ){
@@ -419,9 +426,14 @@ function local_reminders_cron() {
                                         return in_array( $sendToUser->id, $nonRespondents );
                                     });
                                 }
+
+                                $reminder = new due_reminder_questionnaire( $event, $course, $context, $aheadday );
                             }
 
-                            $reminder = new due_reminder($event, $course, $context, $aheadday);
+                            if( 'quiz' == strtolower( $event->modulename ) ){
+                                $reminder = new due_reminder_quiz( $event, $course, $context, $aheadday );
+                            }
+
                             $reminder->set_activity($event->modulename, $activityobj);
                             $eventdata = $reminder->create_reminder_message_object($fromuser);
                         }

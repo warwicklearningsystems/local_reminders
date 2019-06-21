@@ -45,6 +45,18 @@ $messageproviders = array (
     
     // reminders for due events
     'reminders_due' => array (
+    ),
+
+    //reminders for questionnaire due events
+    'reminders_due_questionnaire' => array(
+    ),
+
+    //reminders for assignment due events
+    'reminders_due_assignment' => array(
+    ),
+
+    //reminders for quiz due events
+    'reminders_due_quiz' => array(
     )
         
 );
