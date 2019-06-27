@@ -43,6 +43,7 @@ require_once($CFG->dirroot . '/availability/classes/info_module.php');
 require_once($CFG->libdir . '/modinfolib.php');
 require_once($CFG->dirroot . '/mod/assign/locallib.php');
 require_once($CFG->dirroot . '/mod/questionnaire/locallib.php');
+require_once($CFG->dirroot . '/local/reminders/classes/quiz/report.php');
 
 /// CONSTANTS ///////////////////////////////////////////////////////////
 
@@ -431,6 +432,17 @@ function local_reminders_cron() {
                             }
 
                             if( 'quiz' == strtolower( $event->modulename ) ){
+                                $quiz = $DB->get_record( 'quiz', array( 'id' => $cm->instance ) );
+                                $quizReport = new reminders_quiz_report();
+                                $usersWithoutAttempts = $quizReport->getStudentsWithoutAttempts( $quiz, $cm, $course );
+
+                                if( $usersWithoutAttempts && !empty( $usersWithoutAttempts ) ){
+                                    $userIdsWithoutAttempts = array_column( $usersWithoutAttempts, 'userid');
+
+                                    $sendusers = array_filter( $sendusers, function( $sendToUser ) use ( $userIdsWithoutAttempts ){
+                                        return in_array( $sendToUser->id, $userIdsWithoutAttempts );
+                                    });
+                                }
                                 $reminder = new due_reminder_quiz( $event, $course, $context, $aheadday );
                             }
 
