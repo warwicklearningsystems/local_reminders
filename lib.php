@@ -144,14 +144,14 @@ function local_reminders_cron() {
         }
     }
 
-    $whereclause = '(timestart > '.$timewindowend.') AND (';
+    $whereclause = '((timestart + timeduration) > '.$timewindowend.') AND (';
     $flagor = false;
     foreach ($secondsaheads as $sahead) {
         if($flagor) {
             $whereclause .= ' OR ';
         }
-        $whereclause .= '(timestart - '.$sahead.' >= '.$timewindowstart.' AND '.
-                        'timestart - '.$sahead.' <= '.$timewindowend.')';
+        $whereclause .= '((timestart + timeduration) - '.$sahead.' >= '.$timewindowstart.' AND '.
+                        '(timestart + timeduration) - '.$sahead.' <= '.$timewindowend.')';
         $flagor = true;
     }
     $whereclause .= ')';
@@ -192,22 +192,22 @@ function local_reminders_cron() {
         $aheadday = 0;
         $fromcustom = false;
 
-        if ($event->timestart - REMINDERS_1DAYBEFORE_INSECONDS >= $timewindowstart && 
-                $event->timestart - REMINDERS_1DAYBEFORE_INSECONDS <= $timewindowend) {
+        if (($event->timestart + $event->timeduration) - REMINDERS_1DAYBEFORE_INSECONDS >= $timewindowstart &&
+                ($event->timestart + $event->timeduration) - REMINDERS_1DAYBEFORE_INSECONDS <= $timewindowend) {
             $aheadday = 1;
-        } else if ($event->timestart - REMINDERS_3DAYSBEFORE_INSECONDS >= $timewindowstart && 
-                $event->timestart - REMINDERS_3DAYSBEFORE_INSECONDS <= $timewindowend) {
+        } else if (($event->timestart + $event->timeduration) - REMINDERS_3DAYSBEFORE_INSECONDS >= $timewindowstart &&
+                ($event->timestart + $event->timeduration) - REMINDERS_3DAYSBEFORE_INSECONDS <= $timewindowend) {
             $aheadday = 3;
-        } else if ($event->timestart - REMINDERS_7DAYSBEFORE_INSECONDS >= $timewindowstart && 
-                $event->timestart - REMINDERS_7DAYSBEFORE_INSECONDS <= $timewindowend) {
+        } else if (($event->timestart + $event->timeduration) - REMINDERS_7DAYSBEFORE_INSECONDS >= $timewindowstart &&
+                ($event->timestart + $event->timeduration) - REMINDERS_7DAYSBEFORE_INSECONDS <= $timewindowend) {
             $aheadday = 7;
         } else {
             // find if custom schedule has been defined by user...
             $tempconfigstr = 'local_reminders_'.$event->eventtype.'custom';
             if (isset($CFG->$tempconfigstr) && !empty($CFG->$tempconfigstr) && $CFG->$tempconfigstr > 0) {
                 $customsecs = $CFG->$tempconfigstr;
-                if ($event->timestart - $customsecs >= $timewindowstart &&
-                    $event->timestart - $customsecs <= $timewindowend) {
+                if (($event->timestart + $event->timeduration) - $customsecs >= $timewindowstart &&
+                    ($event->timestart + $event->timeduration) - $customsecs <= $timewindowend) {
                     $aheadday = $customsecs / (REMINDERS_DAYIN_SECONDS * 1.0);
                     mtrace($aheadday);
                     $fromcustom = true;
@@ -305,7 +305,9 @@ function local_reminders_cron() {
 
                     // if we dont want to send reminders for activity openings...
                     //
-                    if (isset($CFG->local_reminders_duesend) && $CFG->local_reminders_duesend == REMINDERS_ACTIVITY_ONLY_CLOSINGS) {
+                    $isQuestionnaireOpenWithClose = ( ( 'questionnaire' == strtolower( $event->modulename ) && $event->timeduration > 0 ) );
+
+                    if (!$isQuestionnaireOpenWithClose  && ( isset($CFG->local_reminders_duesend) && $CFG->local_reminders_duesend == REMINDERS_ACTIVITY_ONLY_CLOSINGS)) {
                         mtrace("  [Local Reminder] Reminder sending for activity openings has been restricted in the configurations.");
                         break; 
                     }
