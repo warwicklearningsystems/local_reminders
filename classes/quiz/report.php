@@ -18,12 +18,12 @@ class reminders_quiz_report extends quiz_attempts_report {
      * @param type $course
      * @return type
      */
-    public function getStudentsWithoutAttempts( $quiz, $cm, $course = null ){
+    public function getStudentsWithAttempts( $quiz, $cm, $course = null ){
         $this->context = context_module::instance( $cm->id );
         list( $currentgroup, $studentsjoins, $groupstudentsjoins, $allowedjoins ) = $this->get_students_joins( $cm, $course );
 
         $options = new quiz_responses_options('overview', $quiz, $cm, $course);
-        $options->attempts = quiz_attempts_report::ENROLLED_WITHOUT;
+        $options->attempts = quiz_attempts_report::ENROLLED_WITH;
         
         $questions = quiz_report_get_significant_questions($quiz);
         

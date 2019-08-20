@@ -422,11 +422,11 @@ function local_reminders_cron() {
                             }
 
                             if( 'questionnaire' == strtolower( $event->modulename ) ){
-                                $nonRespondents = questionnaire_get_incomplete_users( $cm, 0 );
+                                $respondents = questionnaire_get_complete_users( $cm, 0 );
 
-                                if( $nonRespondents && !empty( $nonRespondents ) ){
-                                    $sendusers = array_filter( $sendusers, function( $sendToUser ) use ( $nonRespondents ){
-                                        return in_array( $sendToUser->id, $nonRespondents );
+                                if( $respondents && !empty( $respondents ) ){
+                                    $sendusers = array_filter( $sendusers, function( $sendToUser ) use ( $respondents ){
+                                        return !in_array( $sendToUser->id, $respondents );
                                     });
                                 }
 
@@ -436,13 +436,13 @@ function local_reminders_cron() {
                             if( 'quiz' == strtolower( $event->modulename ) ){
                                 $quiz = $DB->get_record( 'quiz', array( 'id' => $cm->instance ) );
                                 $quizReport = new reminders_quiz_report();
-                                $usersWithoutAttempts = $quizReport->getStudentsWithoutAttempts( $quiz, $cm, $course );
+                                $usersWithAttempts = $quizReport->getStudentsWithAttempts( $quiz, $cm, $course );
 
-                                if( $usersWithoutAttempts && !empty( $usersWithoutAttempts ) ){
-                                    $userIdsWithoutAttempts = array_column( $usersWithoutAttempts, 'userid');
+                                if( $usersWithAttempts && !empty( $usersWithAttempts ) ){
+                                    $userIdsWithAttempts = array_column( $usersWithAttempts, 'userid');
 
-                                    $sendusers = array_filter( $sendusers, function( $sendToUser ) use ( $userIdsWithoutAttempts ){
-                                        return in_array( $sendToUser->id, $userIdsWithoutAttempts );
+                                    $sendusers = array_filter( $sendusers, function( $sendToUser ) use ( $userIdsWithAttempts ){
+                                        return !in_array( $sendToUser->id, $userIdsWithAttempts );
                                     });
                                 }
                                 $reminder = new due_reminder_quiz( $event, $course, $context, $aheadday );
@@ -558,6 +558,41 @@ function local_reminders_cron() {
     
     //add_to_log(0, 'local_reminders', 'cron', '', $timewindowend, 0, 0);
     add_flag_record_db($timewindowend, 'sent');
+}
+
+
+/**
+ * Get users who have completed the questionnaire
+ *
+ * @global object
+ * @uses CONTEXT_MODULE
+ * @param object $cm
+ * @param int $group single groupid
+ * @param string $sort
+ * @param int $startpage
+ * @param int $pagecount
+ * @return object the userrecords
+ */
+function questionnaire_get_complete_users($cm, $sid,
+                $group = false,
+                $sort = '',
+                $startpage = false,
+                $pagecount = false) {
+
+    global $DB;
+
+    // Nnow get all completed questionnaires.
+    $params = array('questionnaireid' => $cm->instance, 'complete' => 'y');
+    $sql = "SELECT userid FROM {questionnaire_response} " .
+           "WHERE questionnaireid = :questionnaireid AND complete = :complete " .
+           "GROUP BY userid ";
+
+    if (!$completedusers = $DB->get_records_sql($sql, $params)) {
+        return false;
+    }
+    $completedusers = array_keys($completedusers);
+
+    return $completedusers;
 }
 
 function get_assignment_submissions(assign $assignment, $users ) {
